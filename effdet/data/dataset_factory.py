@@ -5,6 +5,9 @@ Copyright 2020 Ross Wightman
 import os
 from collections import OrderedDict
 from pathlib import Path
+from effdet.data.parsers.parser_config import RadioGalaxyParserCfg
+
+from effdet.data.parsers.parser_radio_galaxy import RadioGalaxyParser
 
 from .dataset_config import *
 from .parsers import *
@@ -91,6 +94,19 @@ def create_dataset(name, root, splits=('train', 'val')):
             datasets[s] = dataset_cls(
                 data_dir=root / Path(split_cfg['img_dir']),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg)
+            )
+    elif name.startswith('radiogalaxy'):
+        dataset_cfg = RadioGalaxyCfg()
+        for s in splits:
+            split_cfg = dataset_cfg.splits[s]
+            ann_file = root / split_cfg['ann_filename']
+            parser_cfg = RadioGalaxyParserCfg(
+                ann_filename=ann_file,
+                has_labels=True
+            )
+            datasets[s] = dataset_cls(
+                data_dir=root / Path(s),
+                parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
             )
     else:
         assert False, f'Unknown dataset parser ({name})'

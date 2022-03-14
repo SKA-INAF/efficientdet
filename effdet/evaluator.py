@@ -20,17 +20,18 @@ import effdet.evaluation.detection_evaluator as tfm_eval
 _logger = logging.getLogger(__name__)
 
 
-__all__ = ['CocoEvaluator', 'PascalEvaluator', 'OpenImagesEvaluator', 'create_evaluator']
+__all__ = ['CocoEvaluator', 'PascalEvaluator', 'OpenImagesEvaluator', 'RadioGalaxyEvaluator' 'create_evaluator']
 
 
 class Evaluator:
 
-    def __init__(self, distributed=False, pred_yxyx=False):
+    def __init__(self, distributed=False, pred_yxyx=False, score_thresh=0.001):
         self.distributed = distributed
         self.distributed_device = None
         self.pred_yxyx = pred_yxyx
         self.img_indices = []
         self.predictions = []
+        self.score_thresh = score_thresh
 
     def add_predictions(self, detections, target):
         if self.distributed:
@@ -66,7 +67,7 @@ class Evaluator:
             img_dets[:, 3] -= img_dets[:, 1]
             for det in img_dets:
                 score = float(det[4])
-                if score < .001:  # stop when below this threshold, scores in descending order
+                if score < self.score_thresh:  # stop when below this threshold, scores in descending order
                     break
                 coco_det = dict(
                     image_id=int(img_id),
@@ -92,6 +93,47 @@ class CocoEvaluator(Evaluator):
 
     def __init__(self, dataset, distributed=False, pred_yxyx=False):
         super().__init__(distributed=distributed, pred_yxyx=pred_yxyx)
+        self._dataset = dataset.parser
+        self.coco_api = dataset.parser.coco
+
+    def reset(self):
+        self.img_indices = []
+        self.predictions = []
+
+    def evaluate(self, output_result_file=''):
+        if not self.distributed or dist.get_rank() == 0:
+            assert len(self.predictions)
+            coco_predictions, coco_ids = self._coco_predictions()
+            if output_result_file:
+                json.dump(coco_predictions, open(output_result_file, 'w'), indent=4)
+                results = self.coco_api.loadRes(output_result_file)
+            else:
+                with NamedTemporaryFile(prefix='coco_', suffix='.json', delete=False, mode='w') as tmpfile:
+                    json.dump(coco_predictions, tmpfile, indent=4)
+                results = self.coco_api.loadRes(tmpfile.name)
+                try:
+                    os.unlink(tmpfile.name)
+                except OSError:
+                    pass
+            coco_eval = COCOeval(self.coco_api, results, 'bbox')
+            coco_eval.params.imgIds = coco_ids  # score only ids we've used
+            coco_eval.evaluate()
+            coco_eval.accumulate()
+            coco_eval.summarize()
+            metric = coco_eval.stats[0]  # mAP 0.5-0.95
+            if self.distributed:
+                dist.broadcast(torch.tensor(metric, device=self.distributed_device), 0)
+        else:
+            metric = torch.tensor(0, device=self.distributed_device)
+            dist.broadcast(metric, 0)
+            metric = metric.item()
+        self.reset()
+        return metric
+
+class RadioGalaxyEvaluator(Evaluator):
+
+    def __init__(self, dataset, distributed=False, pred_yxyx=False, score_thresh=0.1):
+        super().__init__(distributed=distributed, pred_yxyx=pred_yxyx, score_thresh=score_thresh)
         self._dataset = dataset.parser
         self.coco_api = dataset.parser.coco
 
@@ -188,11 +230,13 @@ class OpenImagesEvaluator(TfmEvaluator):
             dataset, distributed=distributed, pred_yxyx=pred_yxyx, evaluator_cls=tfm_eval.OpenImagesDetectionEvaluator)
 
 
-def create_evaluator(name, dataset, distributed=False, pred_yxyx=False):
+def create_evaluator(name, dataset, distributed=False, pred_yxyx=False, score_thresh=0.001):
     # FIXME support OpenImages Challenge2019 metric w/ image level label consideration
     if 'coco' in name:
         return CocoEvaluator(dataset, distributed=distributed, pred_yxyx=pred_yxyx)
     elif 'openimages' in name:
         return OpenImagesEvaluator(dataset, distributed=distributed, pred_yxyx=pred_yxyx)
+    elif 'radiogalaxy' in name:
+        return RadioGalaxyEvaluator(dataset, distributed=distributed, pred_yxyx=pred_yxyx, score_thresh=score_thresh)
     else:
         return PascalEvaluator(dataset, distributed=distributed, pred_yxyx=pred_yxyx)

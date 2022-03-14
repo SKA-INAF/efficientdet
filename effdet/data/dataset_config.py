@@ -27,6 +27,17 @@ class Coco2017Cfg(CocoCfg):
 
 
 @dataclass
+class RadioGalaxyCfg(CocoCfg):
+    splits: Dict[str, dict] = field(default_factory=lambda: dict(
+        train=dict(ann_filename='annotations/train.json', img_dir='train', has_labels=True),
+        val=dict(ann_filename='annotations/val.json', img_dir='val', has_labels=True),
+        test=dict(ann_filename='annotations/test.json', img_dir='test', has_labels=False),
+    ))
+    parser: str = 'radiogalaxy'
+    num_classes: int = 3
+
+
+@dataclass
 class Coco2014Cfg(CocoCfg):
     variant: str = '2014'
     splits: Dict[str, dict] = field(default_factory=lambda: dict(

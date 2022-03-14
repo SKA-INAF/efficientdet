@@ -91,6 +91,8 @@ parser.add_argument('--torchscript', dest='torchscript', action='store_true',
                     help='convert model torchscript for inference')
 parser.add_argument('--results', default='', type=str, metavar='FILENAME',
                     help='JSON filename for evaluation results')
+parser.add_argument('--score_thresh', default=0.1, type=float,
+                    help='Score Threshold for minimum prediction filtering')
 
 
 def validate(args):
@@ -155,7 +157,7 @@ def validate(args):
         num_workers=args.workers,
         pin_mem=args.pin_mem)
 
-    evaluator = create_evaluator(args.dataset, dataset, pred_yxyx=False)
+    evaluator = create_evaluator(args.dataset, dataset, pred_yxyx=False, score_thresh=args.score_thresh)
     bench.eval()
     batch_time = AverageMeter()
     end = time.time()

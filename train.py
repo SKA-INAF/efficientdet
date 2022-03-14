@@ -201,6 +201,8 @@ parser.add_argument('--eval-metric', default='map', type=str, metavar='EVAL_METR
 parser.add_argument('--tta', type=int, default=0, metavar='N',
                     help='Test/inference time augmentation (oversampling) factor. 0=None (default: 0)')
 parser.add_argument("--local_rank", default=0, type=int)
+parser.add_argument('--score_thresh', default=0.001,
+                    help='Score Threshold for minimum prediction filtering')
 
 
 def _parse_args():
@@ -522,7 +524,7 @@ def create_datasets_and_loaders(
         collate_fn=collate_fn,
     )
 
-    evaluator = create_evaluator(args.dataset, loader_eval.dataset, distributed=args.distributed, pred_yxyx=False)
+    evaluator = create_evaluator(args.dataset, loader_eval.dataset, distributed=args.distributed, pred_yxyx=False, score_thresh=args.score_thresh)
 
     return loader_train, loader_eval, evaluator
 
